@@ -29,7 +29,8 @@ textures = []
 image = PIL.Image.new('RGB', (CELL_SIZE, CELL_SIZE), (0, 0, 0))
 textures.append(arcade.Texture(str((0, 0, 0)), image=image))
 textures.append(arcade.load_texture("res/snake.jpg", scale=CELL_SIZE / Image.open("res/snake.jpg").size[1]))
-
+image = PIL.Image.new('RGB', (CELL_SIZE, CELL_SIZE), (255, 0, 0))
+textures.append(arcade.Texture(str((255, 0, 0)), image=image))
 
 def max2d_i(arr):
     max_i = 0
@@ -49,7 +50,27 @@ class Game(arcade.Window):
         arcade.set_background_color(arcade.color.BLACK)
         self.board_sprite_list = None
 
+        self.last_score = 0
+
+        self.is_game_over = False
+
         self.field = []
+
+        self.expand = 0
+        self.change_direction = 0
+        self.last_direction = 0
+
+        self.frame_count = 0
+
+        self.length = 0
+
+    def setup(self):
+        self.board_sprite_list = arcade.SpriteList()
+
+        self.field = [[0] * COLUMNS for _ in range(ROWS)]
+        self.field[random.randint(0, ROWS-1)][random.randint(0, COLUMNS-1)] = -1
+
+        self.field[ROWS // 2][COLUMNS // 2] = 1
 
         self.expand = 3
         self.change_direction = 1
@@ -57,11 +78,7 @@ class Game(arcade.Window):
 
         self.frame_count = 0
 
-    def setup(self):
-        self.board_sprite_list = arcade.SpriteList()
-
-        self.field = [[0] * COLUMNS for _ in range(ROWS)]
-        self.field[random.randint(2, ROWS-3)][random.randint(2, COLUMNS-3)] = 1
+        self.length = 1
 
         for i in self.field:
             print(i)
@@ -81,13 +98,44 @@ class Game(arcade.Window):
     def move(self):
         head = max2d_i(self.field)
 
+        # UP
         if self.change_direction == DIRECTION_UP:
+            if head[0] == 0 or self.field[head[0] - 1][head[1]] > 0:
+                self.game_over()
+                return
+
+            if self.field[head[0] - 1][head[1]] < 0:
+                self.ate_apple()
             self.field[head[0] - 1][head[1]] = self.field[head[0]][head[1]] + 1
+
+        # RIGHT
         if self.change_direction == DIRECTION_RIGHT:
+            if head[1] == COLUMNS - 1 or self.field[head[0]][head[1] + 1] > 0:
+                self.game_over()
+                return
+
+            if self.field[head[0]][head[1] + 1] < 0:
+                self.ate_apple()
             self.field[head[0]][head[1] + 1] = self.field[head[0]][head[1]] + 1
+
+        # DOWN
         if self.change_direction == DIRECTION_DOWN:
+            if head[0] == ROWS - 1 or self.field[head[0] + 1][head[1]] > 0:
+                self.game_over()
+                return
+
+            if self.field[head[0] + 1][head[1]] < 0:
+                self.ate_apple()
             self.field[head[0] + 1][head[1]] = self.field[head[0]][head[1]] + 1
+
+        # LEFT
         if self.change_direction == DIRECTION_LEFT:
+            if head[1] == 0 or self.field[head[0]][head[1] - 1] > 0:
+                self.game_over()
+                return
+
+            if self.field[head[0]][head[1] - 1] < 0:
+                self.ate_apple()
             self.field[head[0]][head[1] - 1] = self.field[head[0]][head[1]] + 1
 
         if self.expand == 0:
@@ -97,17 +145,30 @@ class Game(arcade.Window):
                         self.field[i][j] -= 1
         else:
             self.expand -= 1
+            self.length += 1
 
         self.last_direction = self.change_direction
 
         self.update_board()
 
+    def ate_apple(self):
+        self.expand += 1
+        new_i = random.randint(0, ROWS - 1)
+        new_j = random.randint(0, COLUMNS - 1)
+
+        while not self.field[new_i][new_j] == 0:
+            new_i = random.randint(0, ROWS - 1)
+            new_j = random.randint(0, COLUMNS - 1)
+
+        self.field[new_i][new_j] = -1
+
     def on_update(self, dt):
-        self.frame_count += 1
-        if self.frame_count % 20 == 0:
-            self.move()
-            print(self.change_direction)
-            self.frame_count = 0
+        if not self.is_game_over:
+            self.frame_count += 1
+            if self.frame_count % 12 == 0:
+                self.move()
+                print(self.change_direction)
+                self.frame_count = 0
 
     def on_key_press(self, key: int, modifiers: int):
         if key == arcade.key.UP and self.last_direction != DIRECTION_DOWN:
@@ -119,6 +180,10 @@ class Game(arcade.Window):
         elif key == arcade.key.LEFT and self.last_direction != DIRECTION_RIGHT:
             self.change_direction = DIRECTION_LEFT
 
+    def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
+        if self.is_game_over:
+            self.is_game_over = False
+
     def update_board(self):
         for row in range(len(self.field)):
             for column in range(len(self.field[0])):
@@ -128,7 +193,26 @@ class Game(arcade.Window):
 
     def on_draw(self):
         arcade.start_render()
-        self.board_sprite_list.draw()
+        if not self.is_game_over:
+            self.board_sprite_list.draw()
+            arcade.draw_text(f"Score: {self.length}.", 5, 5, arcade.color.WHITE_SMOKE, 16)
+        else:
+            arcade.draw_text("Game Over.",
+                             WIDTH // 4, HEIGHT // 2 + 40, arcade.color.RED, 60, width=WIDTH // 2, align="center",
+                             font_name='GARA')
+
+            arcade.draw_text(f"Score: {self.last_score}.",
+                             WIDTH // 4, HEIGHT // 2 - 50, arcade.color.WHITE_SMOKE, 24, width=WIDTH // 2, align="center",
+                             font_name='GARA')
+
+            arcade.draw_text("Click to restart.",
+                             WIDTH // 4, HEIGHT // 2 - 130, arcade.color.WHITE_SMOKE, 28, width=WIDTH // 2, align="center",
+                             font_name='GARA')
+
+    def game_over(self):
+        self.last_score = self.length
+        self.is_game_over = True
+        self.setup()
 
 
 def main():
